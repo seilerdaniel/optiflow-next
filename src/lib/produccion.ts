@@ -37,6 +37,12 @@ export const MOTIVOS_PAUSA = [
 ] as const;
 export type MotivoPausa = (typeof MOTIVOS_PAUSA)[number];
 
+/**
+ * Pauses that count as rework for the FTT index: the stage had to be repeated
+ * because of a planning or material defect, not because of a normal stop.
+ */
+export const MOTIVOS_REPROCESO = ["Error de plano", "Rotura de placa"] as const;
+
 export const CLAVES_ESPECIALES = ["vidrio", "lustre", "herreria", "especiales"] as const;
 export type ClaveEspecial = (typeof CLAVES_ESPECIALES)[number];
 
