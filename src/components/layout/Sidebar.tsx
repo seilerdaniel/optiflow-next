@@ -36,6 +36,30 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/operarios",
+    label: "Operarios",
+    hint: "Maestro de personal",
+    icon: (
+      <path
+        d="M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-7 9a7 7 0 0 1 14 0"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    hint: "KPIs de producción",
+    icon: (
+      <path
+        d="M4 20V10m5 10V4m5 16v-7m5 7V8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
     href: "/sectores",
     label: "Sectores",
     hint: "Placares, cocinas y compartidos",
