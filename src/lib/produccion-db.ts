@@ -171,6 +171,163 @@ export async function listarOperarios(incluirInactivos: boolean): Promise<Operar
   return filas.rows.map(mapOperario);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Operator master — writes (rules O1, O2, O4)                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Inserts an operator, generating `nombre_norm` on the server.
+ *
+ * The normalized key is the real identity: "Pérez" and "Perez" must collide,
+ * otherwise per-operator metrics split into two people. The caller therefore
+ * sends only the display name and this module derives the key — never the
+ * other way around, or a client could create two rows that look different and
+ * behave identical.
+ *
+ * Two concurrency layers, both required:
+ *   · The pre-check gives the friendly 409 with the existing id, so the caller
+ *     can offer "reactivate instead".
+ *   · The unique index is the real guarantee. If two requests pass the check
+ *     at the same time, the loser gets 23505 and is translated to the same 409
+ *     instead of surfacing a 500.
+ */
+export async function crearOperario(nombre: string, activo = true): Promise<Operario> {
+  const norm = claveNormalizada(nombre);
+
+  const existente = await query<Fila<{ id: number; activo: number }>>(
+    "SELECT id, activo FROM operarios WHERE nombre_norm = $1;",
+    [norm],
+  );
+
+  const repetido = existente.rows[0];
+  if (repetido) throw conflictoAlta(nombre, repetido);
+
+  try {
+    const alta = await query<Fila<OperarioRow>>(
+      `INSERT INTO operarios (nombre, nombre_norm, activo, fecha_creacion)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, nombre, activo, fecha_creacion;`,
+      [nombre, norm, activo ? 1 : 0, ahoraUTC()],
+    );
+    return mapOperario(alta.rows[0]);
+  } catch (error) {
+    if (esViolacionUnica(error)) {
+      const ganador = await query<Fila<{ id: number; activo: number }>>(
+        "SELECT id, activo FROM operarios WHERE nombre_norm = $1;",
+        [norm],
+      );
+      throw conflictoAlta(nombre, ganador.rows[0]);
+    }
+    throw error;
+  }
+}
+
+/** The 409 the master returns for an already-registered name. */
+function conflictoAlta(nombre: string, fila?: { id: number; activo: number }): ApiError {
+  return new ApiError(
+    409,
+    `El operario "${nombre}" ya está registrado${fila && !fila.activo ? " (y está DESACTIVADO)" : ""}.`,
+    {
+      id: fila ? Number(fila.id) : undefined,
+      activo: fila ? Boolean(fila.activo) : undefined,
+      accion: "Edítelo o reactívelo desde la lista de operarios.",
+    },
+  );
+}
+
+export interface CambiosOperario {
+  nombre?: string;
+  activo?: boolean;
+}
+
+export interface ResultadoOperarioActualizado {
+  operario: Operario;
+  nombre_anterior: string;
+  registros_actualizados: number;
+}
+
+/**
+ * Renames and/or activates an operator. Mirrors `PUT /api/operarios/:id`.
+ *
+ * Rule O4: a spelling change propagates to `registros_tiempos` in the same
+ * transaction. Historical stages are joined by NAME, so a rename that only
+ * touched the master would split every per-operator metric. Every change
+ * propagates — even an accent-only fix — so master and history never disagree.
+ *
+ * The collision check excludes the row itself (`id <> $1`): fixing the accent
+ * of your own name is not a duplicate.
+ */
+export async function actualizarOperario(
+  id: number,
+  cambios: CambiosOperario,
+): Promise<ResultadoOperarioActualizado> {
+  const actuales = await query<Fila<{ id: number; nombre: string; nombre_norm: string; activo: number }>>(
+    "SELECT id, nombre, nombre_norm, activo FROM operarios WHERE id = $1;",
+    [id],
+  );
+
+  const actual = actuales.rows[0];
+  if (!actual) throw new ApiError(404, `No existe el operario con id ${id}.`);
+
+  const nombreNuevo = cambios.nombre ?? actual.nombre;
+  const activoNuevo = cambios.activo ?? Boolean(actual.activo);
+  const normNuevo = claveNormalizada(nombreNuevo);
+  const cambioGrafia = nombreNuevo !== actual.nombre;
+
+  if (normNuevo !== actual.nombre_norm) {
+    const choque = await query<Fila<{ id: number }>>(
+      "SELECT id FROM operarios WHERE nombre_norm = $1 AND id <> $2;",
+      [normNuevo, id],
+    );
+
+    if (choque.rows[0]) {
+      throw new ApiError(409, `Ya existe otro operario llamado "${nombreNuevo}".`, {
+        id: Number(choque.rows[0].id),
+        accion: "Elija otro nombre o edite el operario en conflicto.",
+      });
+    }
+  }
+
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const ejecutar = ejecutorDe(client);
+
+      const actualizado = await ejecutar<Fila<OperarioRow>>(
+        `UPDATE operarios
+            SET nombre = $1, nombre_norm = $2, activo = $3
+          WHERE id = $4
+          RETURNING id, nombre, activo, fecha_creacion;`,
+        [nombreNuevo, normNuevo, activoNuevo ? 1 : 0, id],
+      );
+
+      let propagados = 0;
+      if (cambioGrafia) {
+        const registros = await ejecutar(
+          "UPDATE registros_tiempos SET operario_nombre = $1 WHERE lower(operario_nombre) = lower($2);",
+          [nombreNuevo, actual.nombre],
+        );
+        propagados = registros.rowCount ?? 0;
+      }
+
+      return { fila: actualizado.rows[0], propagados };
+    });
+
+    return {
+      operario: mapOperario(resultado.fila),
+      nombre_anterior: actual.nombre,
+      registros_actualizados: resultado.propagados,
+    };
+  } catch (error) {
+    // Same race as in `crearOperario`, on the unique index of `nombre_norm`.
+    if (esViolacionUnica(error)) {
+      throw new ApiError(409, `Ya existe otro operario llamado "${nombreNuevo}".`, {
+        accion: "Elija otro nombre o edite el operario en conflicto.",
+      });
+    }
+    throw error;
+  }
+}
+
 export interface FiltrosOrdenes {
   estado?: string;
   linea?: string;
