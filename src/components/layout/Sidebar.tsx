@@ -60,6 +60,30 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/calidad",
+    label: "Calidad",
+    hint: "No conformidades",
+    icon: (
+      <path
+        d="M12 3 4.5 6v5.2c0 4.3 3 8 7.5 9.8 4.5-1.8 7.5-5.5 7.5-9.8V6L12 3Zm-2.6 9 1.9 1.9 3.6-3.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/mantenimiento",
+    label: "Mantenimiento",
+    hint: "TPM por horas netas",
+    icon: (
+      <path
+        d="M14.5 4.5a4.5 4.5 0 0 0-5.8 5.8L4 15v5h5l4.7-4.7a4.5 4.5 0 0 0 5.8-5.8l-2.9 2.9-2.5-2.5 2.4-2.4Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
     href: "/sectores",
     label: "Sectores",
     hint: "Placares, cocinas y compartidos",
