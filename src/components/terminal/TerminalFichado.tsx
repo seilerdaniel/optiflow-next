@@ -3,6 +3,9 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import CronometroEnVivo from "./CronometroEnVivo";
+import BannerTPM from "./BannerTPM";
+import ReportarFalla from "./ReportarFalla";
+import type { MaquinaTPM } from "@/lib/mantenimiento";
 import {
   ESTANDAR_POR_DEFECTO,
   MOTIVOS_PAUSA,
@@ -54,6 +57,22 @@ interface RespuestaAccion {
   registro: RegistroTiempo;
   ot_auto_cerrada?: boolean;
 }
+
+interface RespuestaTPM {
+  ok: true;
+  total: number;
+  maquinas: MaquinaTPM[];
+  criticas: MaquinaTPM[];
+  advertencias: MaquinaTPM[];
+}
+
+const TPM_VACIO: RespuestaTPM = {
+  ok: true,
+  total: 0,
+  maquinas: [],
+  criticas: [],
+  advertencias: [],
+};
 
 class ErrorApi extends Error {
   readonly status: number;
@@ -177,6 +196,7 @@ export default function TerminalFichado() {
   const [ordenes, setOrdenes] = useState<OrdenConProgreso[]>([]);
   const [sectores, setSectores] = useState<Sector[]>([]);
   const [operarios, setOperarios] = useState<Operario[]>([]);
+  const [criticasTPM, setCriticasTPM] = useState<MaquinaTPM[]>([]);
 
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -202,10 +222,12 @@ export default function TerminalFichado() {
 
     async function cargar() {
       try {
-        const [resOrdenes, resSectores, resOperarios] = await Promise.all([
+        const [resOrdenes, resSectores, resOperarios, resTPM] = await Promise.all([
           pedirJson<RespuestaOrdenes>("/api/ordenes"),
           pedirJson<RespuestaSectores>("/api/sectores"),
           pedirJson<RespuestaOperarios>("/api/operarios"),
+          // TPM is advisory: a failure here must not block fichado.
+          pedirJson<RespuestaTPM>("/api/tpm/estado").catch(() => TPM_VACIO),
         ]);
 
         if (!vigente) return;
@@ -213,6 +235,7 @@ export default function TerminalFichado() {
         setOrdenes(resOrdenes.ordenes);
         setSectores(resSectores.sectores);
         setOperarios(resOperarios.operarios);
+        setCriticasTPM(resTPM.criticas ?? []);
         setErrorCarga(null);
       } catch (error) {
         if (!vigente) return;
@@ -546,6 +569,12 @@ export default function TerminalFichado() {
           {cargando ? "Actualizando…" : "Actualizar"}
         </button>
       </header>
+
+      <BannerTPM
+        criticas={criticasTPM}
+        sectorId={sectorSeleccionado?.id ?? null}
+        sectorNombre={sectorSeleccionado?.nombre_sector ?? null}
+      />
 
       {feedback ? (
         <div
@@ -912,6 +941,19 @@ export default function TerminalFichado() {
                 >
                   {enviando === "finalizar" ? "Finalizando…" : "FINALIZAR"}
                 </button>
+
+                {ordenSeleccionada ? (
+                  <ReportarFalla
+                    otId={ordenSeleccionada.id}
+                    otNumero={ordenSeleccionada.numero_ot}
+                    sectorId={etapaActiva.sector_id}
+                    sectorNombre={
+                      sectorDeEtapa?.nombre_sector ?? `Sector #${etapaActiva.sector_id}`
+                    }
+                    operario={etapaActiva.operario_nombre}
+                    onReportada={recargar}
+                  />
+                ) : null}
               </>
             ) : null}
 
