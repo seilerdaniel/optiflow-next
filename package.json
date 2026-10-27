@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:esquema": "node --env-file=.env.local scripts/aplicar-esquema.mjs"
+    "db:esquema": "node db/run-schema.js"
   },
   "dependencies": {
     "next": "16.4.3",
