@@ -48,8 +48,26 @@ export function respuestaError(error: unknown): NextResponse {
 }
 
 /** Parses the JSON body as a plain object. Empty body means `{}`. */
-export async function leerCuerpo(request: Request): Promise<Record<string, unknown>> {
+export async function leerCuerpo(
+  request: Request,
+  { maxBytes }: { maxBytes?: number } = {},
+): Promise<Record<string, unknown>> {
+  const declarado = Number(request.headers.get("content-length") ?? 0);
+  if (maxBytes && declarado > maxBytes) {
+    // Reject before buffering when the client is honest about the size.
+    throw new ApiError(413, "El cuerpo de la solicitud es demasiado grande.", {
+      max_bytes: maxBytes,
+    });
+  }
+
   const crudo = await request.text();
+
+  if (maxBytes && Buffer.byteLength(crudo, "utf8") > maxBytes) {
+    throw new ApiError(413, "El cuerpo de la solicitud es demasiado grande.", {
+      max_bytes: maxBytes,
+    });
+  }
+
   if (!crudo.trim()) return {};
 
   let datos: unknown;

@@ -81,3 +81,27 @@ export async function requireSession(): Promise<SesionActiva> {
 
   return sesion;
 }
+
+/** Roles that can change the plant master data (legacy `gestion`). */
+export const ROLES_GESTION = ["admin", "encargado"] as const;
+
+/**
+ * Session that may also perform management writes.
+ *
+ * Sessions carry a role, but until this module nothing enforced it: every route
+ * only asked "is somebody logged in", so an `operario` could call any endpoint.
+ * The new QMS/TPM writes are too destructive for that (resolving a failure,
+ * snapshotting a maintenance counter), so they require gestión. Retrofitting
+ * the older routes is a separate, deliberate step.
+ */
+export async function requireGestion(): Promise<SesionActiva> {
+  const sesion = await requireSession();
+
+  if (!(ROLES_GESTION as readonly string[]).includes(sesion.usuario.rol)) {
+    throw new ApiError(403, "Esta operación requiere rol de gestión (admin o encargado).", {
+      accion: "Pida a un administrador que revise su rol si necesita hacer esta tarea.",
+    });
+  }
+
+  return sesion;
+}
