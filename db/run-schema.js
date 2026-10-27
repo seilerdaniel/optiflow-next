@@ -77,7 +77,18 @@ async function main() {
   try {
     for (const archivo of archivos) {
       const sql = await readFile(path.join(CARPETA, archivo), "utf8");
-      await cliente.query(sql);
+
+      // One transaction per file: a failing `002_despiece.sql` must not leave
+      // half of the tables created, and the next run starts from a clean state.
+      await cliente.query("BEGIN");
+      try {
+        await cliente.query(sql);
+        await cliente.query("COMMIT");
+      } catch (error) {
+        await cliente.query("ROLLBACK").catch(() => undefined);
+        throw new Error(`${archivo}: ${error.message}`);
+      }
+
       console.log(`ok  ${archivo}`);
     }
   } finally {
