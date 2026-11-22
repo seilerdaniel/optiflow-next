@@ -10,8 +10,8 @@
  * (dev reloads, multiple serverless instances). Creating tables at runtime
  * would race itself. So the schema is a versioned artifact applied on demand.
  *
- * `.env.local` is read here instead of relying on `--env-file`, so the same
- * command works from any shell and on any Node >= 20.
+ * `.env.local` is read by `db/env.js` instead of relying on `--env-file`, so
+ * the same command works from any shell and on any Node >= 20.
  *
  * Every file must be idempotent (`create table if not exists`, ...): this runs
  * against a database that already has data and is usually already up to date.
@@ -20,49 +20,37 @@
 const { readdir, readFile } = require("node:fs/promises");
 const path = require("node:path");
 const { Client } = require("pg");
+const { urlBaseDatos } = require("./env");
 
 const CARPETA = path.join(process.cwd(), "db");
-const ENV_LOCAL = path.join(process.cwd(), ".env.local");
 
-/** Minimal `.env` reader: `KEY=value`, optional quotes, `#` comments. */
-async function cargarEnvLocal() {
-  if (process.env.SUPABASE_DB_URL) return;
+/*
+ * Transaction control belongs to the runner, not to the files.
+ *
+ * Each file is applied inside one BEGIN/COMMIT pair, so a file that opens or
+ * closes a transaction of its own breaks that guarantee: a nested BEGIN only
+ * emits a warning, and its COMMIT closes the runner's transaction early, so
+ * everything after it runs in autocommit. That is exactly the bug `001` had.
+ *
+ * The check ignores comments and quoted literals, and dollar-quoted bodies
+ * (`$$ ... $$`) so a PL/pgSQL function can still use its own BEGIN/END.
+ */
+const CONTROL_TRANSACCION =
+  /\b(?:begin(?:\s+(?:transaction|work))?|start\s+transaction|commit(?:\s+(?:transaction|work))?|rollback(?:\s+(?:transaction|work))?)\s*;/i;
 
-  let texto;
-  try {
-    texto = await readFile(ENV_LOCAL, "utf8");
-  } catch {
-    return;
-  }
+function transaccionExplicita(sql) {
+  const visible = sql
+    .replace(/\$[A-Za-z_]*\$[\s\S]*?\$[A-Za-z_]*\$/g, " ") // cuerpos $$ ... $$
+    .replace(/\/\*[\s\S]*?\*\//g, " ") // comentarios de bloque
+    .replace(/--[^\n]*/g, " ") // comentarios de línea
+    .replace(/'(?:''|[^'])*'/g, " "); // literales de texto
 
-  for (const linea of texto.split(/\r?\n/)) {
-    const limpia = linea.trim();
-    if (!limpia || limpia.startsWith("#")) continue;
-
-    const corte = limpia.indexOf("=");
-    if (corte <= 0) continue;
-
-    const clave = limpia.slice(0, corte).trim();
-    if (process.env[clave] !== undefined) continue;
-
-    process.env[clave] = limpia
-      .slice(corte + 1)
-      .trim()
-      .replace(/^"(.*)"$/, "$1")
-      .replace(/^'(.*)'$/, "$1");
-  }
+  const encontrada = CONTROL_TRANSACCION.exec(visible);
+  return encontrada ? encontrada[0].trim() : null;
 }
 
 async function main() {
-  await cargarEnvLocal();
-
-  const url = process.env.SUPABASE_DB_URL;
-  if (!url) {
-    console.error(
-      "SUPABASE_DB_URL is not set. Add it to .env.local or export it in the shell.",
-    );
-    process.exit(1);
-  }
+  const url = await urlBaseDatos();
 
   const archivos = (await readdir(CARPETA)).filter((nombre) => nombre.endsWith(".sql")).sort();
 
@@ -77,6 +65,14 @@ async function main() {
   try {
     for (const archivo of archivos) {
       const sql = await readFile(path.join(CARPETA, archivo), "utf8");
+
+      const control = transaccionExplicita(sql);
+      if (control) {
+        throw new Error(
+          `${archivo}: contiene "${control}" explícito. ` +
+            "Quitalo: el runner ya envuelve cada archivo en su propia transacción.",
+        );
+      }
 
       // One transaction per file: a failing `002_despiece.sql` must not leave
       // half of the tables created, and the next run starts from a clean state.

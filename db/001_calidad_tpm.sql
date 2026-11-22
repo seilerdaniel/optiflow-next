@@ -6,8 +6,11 @@
 -- and is applied explicitly with `npm run db:esquema`.
 --
 -- Every statement is idempotent: running this file twice must be a no-op.
-
-begin;
+--
+-- No `begin`/`commit` here: `db/run-schema.js` already wraps each file in its
+-- own transaction. A nested BEGIN only emits a warning and lets this file's
+-- COMMIT close the runner's transaction early, which would silently break the
+-- all-or-nothing guarantee for the rest of the file.
 
 -- ---------------------------------------------------------------------------
 -- TPM · one row per machine. Hours are NET worked hours of the SECTOR, so a
@@ -79,5 +82,3 @@ create index if not exists idx_nc_ot on public.no_conformidades (ot_id, fecha_re
 create index if not exists idx_nc_sector on public.no_conformidades (sector_id, fecha_registro desc);
 create index if not exists idx_nc_estado on public.no_conformidades (estado, fecha_registro desc);
 create index if not exists idx_nc_fecha on public.no_conformidades (fecha_registro desc);
-
-commit;
