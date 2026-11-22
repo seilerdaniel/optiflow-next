@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:esquema": "node db/run-schema.js"
+    "db:esquema": "node db/run-schema.js",
+    "db:seed": "node db/seed.js"
   },
   "dependencies": {
     "next": "16.4.6",
