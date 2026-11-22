@@ -7,7 +7,7 @@ import {
   textoRequerido,
 } from "@/lib/http";
 import { crearOperario, listarOperarios } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion, requireSession } from "@/lib/session-server";
 
 /*
  * GET  /api/operarios → master list (active only unless `?todos=1`)
@@ -20,6 +20,9 @@ import { requireSession } from "@/lib/session-server";
  * Same surface as the legacy Express backend: list + create here, rename and
  * activate/deactivate in `[id]`. Both handlers delegate the business rules to
  * `produccion-db`, which is also what the Server Actions call.
+ *
+ * Listing is floor work (the terminal needs the roster); creating an operator
+ * is management work.
  */
 
 export async function GET(request: Request) {
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
   await connection();
 
   try {
-    await requireSession();
+    await requireGestion();
 
     const cuerpo = await leerCuerpo(request);
 

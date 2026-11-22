@@ -4,13 +4,15 @@ import { revalidatePath } from "next/cache";
 import type { ResultadoAccion } from "@/components/operarios/tipos";
 import { ApiError, entero, textoRequerido } from "@/lib/http";
 import { actualizarOperario, crearOperario as crearOperarioDB, type CambiosOperario } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion } from "@/lib/session-server";
 
 /*
  * Server Actions of the operator master.
  *
- * Every action re-checks the session: a Server Action is a public endpoint, so
- * rendering the form only on an authenticated page is not authorisation.
+ * Every action re-checks the session and the role: a Server Action is a public
+ * endpoint, so rendering the form only on an authenticated page is not
+ * authorisation. The operator master is management data, so all three require
+ * `requireGestion()` — the same rule as the REST endpoints they mirror.
  *
  * The business rules (O1/O2 normalized key, O3 deactivation keeps history, O4
  * rename propagates to `registros_tiempos`) live in `produccion-db`, NOT here.
@@ -50,7 +52,7 @@ export async function crearOperario(
   formData: FormData,
 ): Promise<ResultadoAccion> {
   try {
-    await requireSession();
+    await requireGestion();
 
     const nombre = textoRequerido(formData.get("nombre"), NOMBRE_CAJA, { max: NOMBRE_MAX });
     const operario = await crearOperarioDB(nombre);
@@ -72,7 +74,7 @@ export async function crearOperario(
  */
 export async function toggleOperario(id: number, activo: boolean): Promise<ResultadoAccion> {
   try {
-    await requireSession();
+    await requireGestion();
 
     const { operario } = await actualizarOperario(entero(id, "id"), { activo: !activo });
 
@@ -95,7 +97,7 @@ export async function toggleOperario(id: number, activo: boolean): Promise<Resul
  */
 export async function renombrarOperario(id: number, nombre: string): Promise<ResultadoAccion> {
   try {
-    await requireSession();
+    await requireGestion();
 
     const cambios: CambiosOperario = {
       nombre: textoRequerido(nombre, NOMBRE_CAJA, { max: NOMBRE_MAX }),

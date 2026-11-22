@@ -4,7 +4,7 @@ import {
   reemplazarMateriales,
   type MaterialEntrada,
 } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion } from "@/lib/session-server";
 
 /*
  * PUT /api/ordenes/:id/materiales
@@ -19,6 +19,8 @@ import { requireSession } from "@/lib/session-server";
  * Rows omitted from the array are deleted, which is why the UI always sends
  * every existing row back. Validation of the consumed ≤ required invariant
  * happens inside the transaction, after merging each row with its stored value.
+ *
+ * Management only: replacing the plate list changes what the plant consumes.
  */
 export async function PUT(
   request: Request,
@@ -28,7 +30,7 @@ export async function PUT(
   await connection();
 
   try {
-    await requireSession();
+    await requireGestion();
 
     const { id } = await params;
     const otId = entero(id, "id");

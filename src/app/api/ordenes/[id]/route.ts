@@ -18,7 +18,7 @@ import {
   obtenerOrden,
   type CambiosOrden,
 } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion, requireSession } from "@/lib/session-server";
 
 /*
  * GET   /api/ordenes/:id  → order detail (order + stage history + sectors)
@@ -26,6 +26,9 @@ import { requireSession } from "@/lib/session-server";
  *
  * Both return the same envelope so the client can replace its whole state with
  * one `setState` after a save.
+ *
+ * Reading is floor work; editing the order header is office work, so only the
+ * PATCH requires a management role.
  */
 
 async function detalleO404(id: number): Promise<DetalleOrden> {
@@ -61,7 +64,7 @@ export async function PATCH(
   await connection();
 
   try {
-    await requireSession();
+    await requireGestion();
 
     const { id } = await params;
     const otId = entero(id, "id");

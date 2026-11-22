@@ -13,7 +13,7 @@ import {
 } from "@/lib/http";
 import { ESTADOS_OT, LINEAS_OT } from "@/lib/produccion";
 import { crearOrden, listarOrdenes, type FiltrosOrdenes } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion, requireSession } from "@/lib/session-server";
 
 /*
  * GET /api/ordenes
@@ -71,13 +71,15 @@ export async function GET(request: Request) {
  * Creates a work order from the office ("+ Nueva OT"). `numero_ot` is stored
  * uppercase and the line defaults to Placares, matching the legacy endpoint.
  * A duplicate number comes back as 409.
+ *
+ * Management only: opening an order is office work, not floor work.
  */
 export async function POST(request: Request) {
   // See `/api/sectores`: outside the try so the prerender abort is not caught.
   await connection();
 
   try {
-    await requireSession();
+    await requireGestion();
 
     const cuerpo = await leerCuerpo(request);
 

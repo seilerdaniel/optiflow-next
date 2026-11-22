@@ -8,7 +8,7 @@ import {
   textoRequerido,
 } from "@/lib/http";
 import { actualizarOperario, type CambiosOperario } from "@/lib/produccion-db";
-import { requireSession } from "@/lib/session-server";
+import { requireGestion } from "@/lib/session-server";
 
 /*
  * PUT /api/operarios/:id → rename and/or activate-deactivate.
@@ -24,6 +24,9 @@ import { requireSession } from "@/lib/session-server";
  *
  * The response repeats the updated row plus `registros_actualizados`, which is
  * what the legacy backend returned and what a migration client expects.
+ *
+ * Management only: renaming rewrites the spelling of past stage records, and
+ * deactivating removes the operator from the terminal roster.
  */
 
 export async function PUT(
@@ -34,7 +37,7 @@ export async function PUT(
   await connection();
 
   try {
-    await requireSession();
+    await requireGestion();
 
     const { id } = await params;
     const operarioId = entero(id, "id");
